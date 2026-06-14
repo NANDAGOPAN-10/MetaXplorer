@@ -5,3 +5,4 @@ exifread
 pypdf
 mutagen
 hachoir
+gunicorn
