@@ -1,0 +1,7 @@
+Flask
+Werkzeug
+python-magic
+exifread
+pypdf
+mutagen
+hachoir
