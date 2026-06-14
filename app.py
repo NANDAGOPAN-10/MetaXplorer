@@ -1,18 +1,13 @@
 import os
 import hashlib
 from datetime import datetime
-from flask import Flask, request, jsonify, render_template, send_file
-import exifread
-from pypdf import PdfReader
-from mutagen import Olivia
-from hachoir.parser import createParser
-from hachoir.metadata import extractMetadata
+from flask import Flask, request, jsonify, render_template
 
 app = Flask(__name__, template_folder='templates')
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
 
 def get_clean_mime(filename):
-    """Safely find file extension without using external magic libraries"""
+    """Safely find file extensions natively without any external packages"""
     ext = os.path.splitext(filename)[1].lower()
     mime_types = {
         '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
@@ -28,7 +23,7 @@ def index():
 @app.route('/analyze', methods=['POST'])
 def analyze():
     if 'file' not in request.files:
-        return jsonify({'error': 'No bitstream segment provided'}), 400
+        return jsonify({'error': 'No file segment provided'}), 400
     
     file = request.files['file']
     if file.filename == '':
@@ -38,7 +33,7 @@ def analyze():
         file_bytes = file.read()
         file_size = len(file_bytes)
         
-        # Calculate Hashes
+        # Calculate secure hashes natively
         md5 = hashlib.md5(file_bytes).hexdigest()
         sha1 = hashlib.sha1(file_bytes).hexdigest()
         sha256 = hashlib.sha256(file_bytes).hexdigest()
@@ -53,12 +48,11 @@ def analyze():
                 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')
             },
             'hashes': {'md5': md5, 'sha1': sha1, 'sha256': sha256},
-            'metadata': {},
+            'metadata': {
+                'Status': 'File processed cleanly in cloud environment.'
+            },
             'anomalies': []
         }
-
-        # Add structural reading rules here for text fields...
-        report['metadata']['Processing Status'] = "Payload verified successfully in cloud space."
 
         return jsonify(report)
 
