@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MetaXplorer - Universal Metadata Analyzer</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        .drag-over { border-color: #3b82f6; background-color: #1e293b; }
+        #map { height: 300px; width: 100%; border-radius: 0.5rem; display: none; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans min-h-screen">
+
+    <nav class="border-b border-gray-800 bg-gray-900 px-6 py-4">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <h1 class="text-xl font-mono font-bold tracking-wider text-blue-400">🕵️‍♂️ METAXPLORER // Universal Metadata Analyzer</h1>
+            <span class="text-xs bg-red-950 text-red-400 border border-red-900 px-3 py-1 rounded font-mono">FORENSIC ENVIRONMENT</span>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto p-6 space-y-6">
+        
+        <div id="drop-zone" class="border-2 border-dashed border-gray-700 rounded-xl p-8 text-center cursor-pointer transition-all bg-gray-900/50 hover:border-gray-500">
+            <input type="file" id="file-input" class="hidden" />
+            <div class="space-y-2">
+                <p class="text-lg font-medium">Drag & drop evidence files here, or <span class="text-blue-400 underline">browse</span></p>
+                <p class="text-xs text-gray-400 font-mono">Supports: Images (EXIF), PDFs, Audio (Mutagen), Video (Hachoir)</p>
+            </div>
+        </div>
+
+        <div id="loader" class="hidden text-center py-4 text-blue-400 font-mono text-sm animate-pulse">
+            [+] Extracting bitstreams and evaluating structural signatures...
+        </div>
+
+        <div id="dashboard" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <div class="space-y-6 lg:col-span-1">
+                <div class="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
+                    <h3 class="text-sm font-mono uppercase tracking-wide text-gray-400 border-b border-gray-800 pb-2">File Characteristics</h3>
+                    <div class="space-y-2 font-mono text-xs">
+                        <p><span class="text-gray-500">Name:</span> <span id="meta-name" class="text-gray-200"></span></p>
+                        <p><span class="text-gray-500">MIME:</span> <span id="meta-mime" class="text-blue-400"></span></p>
+                        <p><span class="text-gray-500">Size:</span> <span id="meta-size" class="text-gray-200"></span> bytes</p>
+                        <p><span class="text-gray-500">Analysis Time:</span> <span id="meta-time" class="text-gray-200"></span></p>
+                    </div>
+                </div>
+
+                <div class="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
+                    <h3 class="text-sm font-mono uppercase tracking-wide text-gray-400 border-b border-gray-800 pb-2">Cryptographic Hashes</h3>
+                    <div class="space-y-3 font-mono text-xs">
+                        <div>
+                            <span class="block text-gray-500 text-[10px]">MD5</span>
+                            <span id="hash-md5" class="break-all text-green-400"></span>
+                        </div>
+                        <div>
+                            <span class="block text-gray-500 text-[10px]">SHA-1</span>
+                            <span id="hash-sha1" class="break-all text-green-400"></span>
+                        </div>
+                        <div>
+                            <span class="block text-gray-500 text-[10px]">SHA-256</span>
+                            <span id="hash-sha256" class="break-all text-green-400"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="anomaly-card" class="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-3 hidden">
+                    <h3 class="text-sm font-mono uppercase tracking-wide text-orange-400 border-b border-gray-800 pb-2">⚠️ Flagged Anomalies</h3>
+                    <ul id="anomaly-list" class="list-disc list-inside text-xs text-orange-300 space-y-1 font-mono"></ul>
+                </div>
+            </div>
+
+            <div class="lg:col-span-2 space-y-6">
+                <div class="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
+                    <div class="flex justify-between items-center border-b border-gray-800 pb-2">
+                        <h3 class="text-sm font-mono uppercase tracking-wide text-gray-400">Extracted Metadata Dictionary</h3>
+                        <button id="btn-csv" class="text-xs bg-blue-600 hover:bg-blue-700 text-white font-mono px-3 py-1 rounded transition">Export CSV</button>
+                    </div>
+                    
+                    <div id="map"></div>
+
+                    <div class="overflow-x-auto max-h-[450px] border border-gray-800 rounded">
+                        <table class="w-full text-left font-mono text-xs">
+                            <thead class="bg-gray-950 text-gray-400 uppercase tracking-wider text-[10px]">
+                                <tr>
+                                    <th class="p-3">Field Tag Key</th>
+                                    <th class="p-3">Resolved Values</th>
+                                </tr>
+                            </thead>
+                            <tbody id="metadata-tbody" class="divide-y divide-gray-800">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const loader = document.getElementById('loader');
+        const dashboard = document.getElementById('dashboard');
+        
+        let map = null; 
+        let globalCachedReport = null;
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            if(e.dataTransfer.files.length) processFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', (e) => {
+            if(e.target.files.length) processFile(e.target.files[0]);
+        });
+
+        async function processFile(file) {
+            loader.classList.remove('hidden');
+            dashboard.classList.add('hidden');
+            
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/analyze', { method: 'POST', body: formData });
+                const result = await response.json();
+                if(response.ok) {
+                    globalCachedReport = result;
+                    renderDashboard(result);
+                } else {
+                    alert("Analysis Failure: " + result.error);
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Network communication interrupt during processing.");
+            } finally {
+                loader.classList.add('hidden');
+            }
+        }
+
+        function renderDashboard(data) {
+            dashboard.classList.remove('hidden');
+
+            document.getElementById('meta-name').innerText = data.summary.filename;
+            document.getElementById('meta-mime').innerText = data.summary.mime_type;
+            document.getElementById('meta-size').innerText = data.summary.size_bytes.toLocaleString();
+            document.getElementById('meta-time').innerText = data.summary.timestamp;
+
+            document.getElementById('hash-md5').innerText = data.hashes.md5;
+            document.getElementById('hash-sha1').innerText = data.hashes.sha1;
+            document.getElementById('hash-sha256').innerText = data.hashes.sha256;
+
+            const anomalyCard = document.getElementById('anomaly-card');
+            const anomalyList = document.getElementById('anomaly-list');
+            anomalyList.innerHTML = '';
+            if(data.anomalies && data.anomalies.length > 0) {
+                anomalyCard.classList.remove('hidden');
+                data.anomalies.forEach(anomaly => {
+                    const li = document.createElement('li');
+                    li.innerText = anomaly;
+                    anomalyList.appendChild(li);
+                });
+            } else {
+                anomalyCard.classList.add('hidden');
+            }
+
+            const tbody = document.getElementById('metadata-tbody');
+            tbody.innerHTML = '';
+            
+            let targetLat = data.metadata.computed_latitude;
+            let targetLon = data.metadata.computed_longitude;
+
+            Object.entries(data.metadata).forEach(([key, val]) => {
+                if(key === 'computed_latitude' || key === 'computed_longitude') return;
+                const row = document.createElement('tr');
+                row.className = "hover:bg-gray-900/50";
+                row.innerHTML = `<td class="p-3 font-semibold text-gray-400">${key}</td><td class="p-3 text-gray-200 break-all">${val}</td>`;
+                tbody.appendChild(row);
+            });
+
+            if(!tbody.children.length) {
+                tbody.innerHTML = `<tr><td colspan="2" class="p-3 text-center text-gray-500">No embedded tag structures found in standard tables.</td></tr>`;
+            }
+
+            const mapEl = document.getElementById('map');
+            if(targetLat && targetLon) {
+                mapEl.style.display = 'block';
+                if (map) { map.remove(); }
+                
+                map = L.map('map').setView([targetLat, targetLon], 13);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap'
+                }).addTo(map);
+                L.marker([targetLat, targetLon]).addTo(map)
+                    .bindPopup(`<b>Evidence Coordinates Found:</b><br>${targetLat.toFixed(5)}, ${targetLon.toFixed(5)}`)
+                    .openPopup();
+            } else {
+                mapEl.style.display = 'none';
+            }
+        }
+
+        document.getElementById('btn-csv').addEventListener('click', async () => {
+            if(!globalCachedReport) return;
+            const resp = await fetch('/export/csv', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(globalCachedReport)
+            });
+            if(resp.ok) {
+                const blob = await resp.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Forensic_Report_${globalCachedReport.summary.filename}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            }
+        });
+    </script>
+</body>
+</html>
