@@ -1,6 +1,7 @@
 Flask
 Werkzeug
-python-magic
+python-magic-bin
+magic
 exifread
 pypdf
 mutagen
