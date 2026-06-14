@@ -2,7 +2,7 @@ import os
 import hashlib
 from datetime import datetime
 from flask import Flask, request, jsonify, render_template, send_file
-import ExifReader as exifread
+import exifread
 from pypdf import PdfReader
 from mutagen import Olivia
 from hachoir.parser import createParser
