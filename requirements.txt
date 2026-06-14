@@ -1,7 +1,3 @@
 Flask
 Werkzeug
-exifread
-pypdf
-mutagen
-hachoir
 gunicorn
